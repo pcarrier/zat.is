@@ -115,7 +115,6 @@ func extractFromScheme(scheme string) (realScheme string, format string, size in
 	fg = color.RGBA{A: 255}
 	bg = color.RGBA{R: 255, G: 255, B: 255, A: 255}
 	parts := schemeParms.FindStringSubmatch(scheme)
-	log.Println("extractFromScheme1", fg, bg, len(parts))
 	format = parts[1]
 	size, _ = strconv.Atoi(parts[2])
 	if len(parts[3]) > 0 {
@@ -123,7 +122,6 @@ func extractFromScheme(scheme string) (realScheme string, format string, size in
 		bg, _ = parseHexColor(parts[4])
 	}
 	realScheme = parts[5]
-	log.Println("extractFromScheme2", fg, bg)
 	return
 }
 
@@ -148,7 +146,6 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 	}
 
 	u.Scheme, format, size, fg, bg = extractFromScheme(u.Scheme)
-	log.Println("extractFromPath", target, fg, bg)
 	target = u.String()
 
 	if l := len(target); l > 1024 {
@@ -183,7 +180,6 @@ func serveLink(ctx *h.RequestCtx) {
 func serveQR(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
 	target, format, size, fg, bg, err := extractFromPath(ctx)
-	log.Println("serveQR", target, fg, bg) // fg and bg are uninitialized here!?
 	if err != nil {
 		ctx.Error(f.Sprintf("Invalid target: %s", err), h.StatusBadRequest)
 		return
