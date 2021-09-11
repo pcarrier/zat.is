@@ -24,7 +24,7 @@ import (
 var (
 	strLocation        = []byte("Location")
 	base32At128Path, _ = regexp.Compile("/\\.([a-zA-Z2-7]{26})")
-	schemeParms, _     = regexp.Compile("(?:([a-z]*)([0-9]*)[.+](?:([0-9a-fA-F]{8})([0-9a-fA-F]{8})[.+])?)?(.*)")
+	schemeParms, _     = regexp.Compile("(?:([a-z]*)([0-9]*)[.+](?:([0-9a-fA-F]{3,8})[.+]([0-9a-fA-F]{3,8})[.+])?)?(.*)")
 	pool               *pp.Pool
 )
 
@@ -89,29 +89,40 @@ func b32encode(path string) string {
 }
 
 func parseHexColor(s string) (c color.RGBA, err error) {
-	_, err = f.Sscanf(s, "%02x%02x%02x%02x", &c.R, &c.G, &c.B, &c.A)
+	switch len(s) {
+	case 8:
+		_, err = f.Sscanf(s, "%02x%02x%02x%02x", &c.R, &c.G, &c.B, &c.A)
+	case 6:
+		c.A = 255
+		_, err = f.Sscanf(s, "%02x%02x%02x", &c.R, &c.G, &c.B)
+	case 4:
+		_, err = f.Sscanf(s, "%01x%01x%01x%01x", &c.R, &c.G, &c.B, &c.A)
+		c.R *= 0x11
+		c.G *= 0x11
+		c.B *= 0x11
+		c.A *= 0x11
+	case 3:
+		c.A = 255
+		_, err = f.Sscanf(s, "%01x%01x%01x", &c.R, &c.G, &c.B)
+		c.R *= 0x11
+		c.G *= 0x11
+		c.B *= 0x11
+	}
 	return
 }
 
 func extractFromScheme(scheme string) (realScheme string, format string, size int, fg, bg color.RGBA) {
 	fg = color.RGBA{A: 255}
 	bg = color.RGBA{R: 255, G: 255, B: 255, A: 255}
-	log.Println("extractFromScheme1", fg, bg)
 	parts := schemeParms.FindStringSubmatch(scheme)
-	switch len(parts) {
-	case 6:
-		format = parts[1]
-		size, _ = strconv.Atoi(parts[2])
+	log.Println("extractFromScheme1", fg, bg, len(parts))
+	format = parts[1]
+	size, _ = strconv.Atoi(parts[2])
+	if len(parts[3]) > 0 {
 		fg, _ = parseHexColor(parts[3])
 		bg, _ = parseHexColor(parts[4])
-		realScheme = parts[5]
-	case 4:
-		format = parts[1]
-		size, _ = strconv.Atoi(parts[2])
-		realScheme = parts[3]
-	case 2:
-		realScheme = parts[1]
 	}
+	realScheme = parts[5]
 	log.Println("extractFromScheme2", fg, bg)
 	return
 }
