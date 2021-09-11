@@ -10,6 +10,7 @@ import (
 	pp "github.com/jackc/pgx/v4/pgxpool"
 	qr "github.com/skip2/go-qrcode"
 	h "github.com/valyala/fasthttp"
+	"image/color"
 	"image/gif"
 	"image/png"
 	"log"
@@ -31,7 +32,7 @@ const (
 var (
 	strLocation        = []byte("Location")
 	base32At128Path, _ = regexp.Compile("/\\.([a-zA-Z2-7]{26})")
-	schemeParms, _     = regexp.Compile("(?:([a-z]*)([0-9]*)\\+)?(.*)")
+	schemeParms, _     = regexp.Compile("(?:([a-z]*)([0-9]*)[.+](?:([0-9a-fA-F]{8})([0-9a-fA-F]{8})[.+])?)?(.*)")
 	pool               *pp.Pool
 )
 
@@ -95,13 +96,35 @@ func b32encode(path string) string {
 	return b32.StdEncoding.WithPadding(b32.NoPadding).EncodeToString(u[:])
 }
 
-func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int, err error) {
+func parseHexColor(s string) (c color.RGBA, err error) {
+	_, err = f.Sscanf(s, "%02x%02x%02x%02x", &c.R, &c.G, &c.B, &c.A)
+	return
+}
+
+func extractFromScheme(scheme string) (realScheme string, format string, size int, fg, bg color.RGBA) {
+	fg = color.RGBA{A: 255}
+	bg = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	parts := schemeParms.FindStringSubmatch(scheme)
+	switch len(parts) {
+	case 6:
+		format = parts[1]
+		size, _ = strconv.Atoi(parts[2])
+		fg, _ = parseHexColor(parts[3])
+		bg, _ = parseHexColor(parts[4])
+		realScheme = parts[5]
+	case 4:
+		format = parts[1]
+		size, _ = strconv.Atoi(parts[2])
+		realScheme = parts[3]
+	case 2:
+		realScheme = parts[1]
+	}
+	return
+}
+
+func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int, fg, bg color.RGBA, err error) {
 	raw, err := url.PathUnescape(string(ctx.Request.Header.RequestURI()[1:]))
 	if err != nil {
-		return
-	}
-	if l := len(target); l > 1024 {
-		err = errors.New(f.Sprintf("too long (%d characters)", l))
 		return
 	}
 
@@ -116,27 +139,20 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 		err = errors.New("missing host")
 	}
 
-	u.Scheme, format, size = extractFromScheme(u.Scheme)
+	u.Scheme, format, size, fg, bg = extractFromScheme(u.Scheme)
 	target = u.String()
-	return
-}
 
-func extractFromScheme(scheme string) (realScheme string, format string, size int) {
-	parts := schemeParms.FindStringSubmatch(scheme)
-	switch len(parts) {
-	case 2:
-		realScheme = parts[1]
-	case 4:
-		format = parts[1]
-		size, _ = strconv.Atoi(parts[2])
-		realScheme = parts[3]
+	if l := len(target); l > 1024 {
+		err = errors.New(f.Sprintf("too long (%d characters)", l))
+		return
 	}
+
 	return
 }
 
 func serveLink(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
-	target, _, _, err := extractFromPath(ctx)
+	target, _, _, _, _, err := extractFromPath(ctx)
 	if err != nil {
 		ctx.Error(f.Sprintf("Invalid target: %s", err), h.StatusBadRequest)
 		return
@@ -157,7 +173,8 @@ func serveLink(ctx *h.RequestCtx) {
 
 func serveQR(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
-	target, format, size, err := extractFromPath(ctx)
+	target, format, size, fg, bg, err := extractFromPath(ctx)
+	log.Println(target, fg, bg) // fg and bg are uninitialized here!?
 	if err != nil {
 		ctx.Error(f.Sprintf("Invalid target: %s", err), h.StatusBadRequest)
 		return
@@ -186,6 +203,8 @@ func serveQR(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Link", u)
 	ctx.Response.Header.Set("To", target)
 	q, err := qr.New(u, qr.Low)
+	q.ForegroundColor = fg
+	q.BackgroundColor = bg
 	if err != nil {
 		ctx.Error(err.Error(), h.StatusInternalServerError)
 	}
@@ -210,11 +229,16 @@ func serveQR(ctx *h.RequestCtx) {
 	case "gif":
 		ctx.SetContentType("image/gif")
 		img := q.Image(-size)
-		gif.Encode(ctx, img, &gif.Options{NumColors: 2})
+		if err := gif.Encode(ctx, img, &gif.Options{NumColors: 2}); err != nil {
+			ctx.Error(err.Error(), h.StatusInternalServerError)
+		}
 	case "png":
 		ctx.SetContentType("image/png")
 		img := q.Image(-size)
-		png.Encode(ctx, img)
+		if err := png.Encode(ctx, img); err != nil {
+			ctx.Error(err.Error(), h.StatusInternalServerError)
+			return
+		}
 	}
 }
 
