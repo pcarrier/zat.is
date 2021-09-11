@@ -21,14 +21,6 @@ import (
 	"strings"
 )
 
-type Format int
-
-const (
-	TXT Format = iota
-	GIF
-	PNG
-)
-
 var (
 	strLocation        = []byte("Location")
 	base32At128Path, _ = regexp.Compile("/\\.([a-zA-Z2-7]{26})")
@@ -123,12 +115,15 @@ func extractFromScheme(scheme string) (realScheme string, format string, size in
 }
 
 func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int, fg, bg color.RGBA, err error) {
-	raw, err := url.PathUnescape(string(ctx.Request.Header.RequestURI()[1:]))
+	var s string
+
+	s, err = url.PathUnescape(string(ctx.Request.Header.RequestURI()[1:]))
 	if err != nil {
 		return
 	}
 
-	u, err := url.Parse(raw)
+	var u *url.URL
+	u, err = url.Parse(s)
 	if err != nil {
 		return
 	}
@@ -202,7 +197,9 @@ func serveQR(ctx *h.RequestCtx) {
 	u := f.Sprintf("HTTPS://ZAT.IS/.%s", path)
 	ctx.Response.Header.Set("Link", u)
 	ctx.Response.Header.Set("To", target)
-	q, err := qr.New(u, qr.Low)
+
+	var q *qr.QRCode
+	q, err = qr.New(u, qr.Low)
 	q.ForegroundColor = fg
 	q.BackgroundColor = bg
 	if err != nil {
