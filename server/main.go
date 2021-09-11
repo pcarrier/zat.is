@@ -24,7 +24,7 @@ import (
 var (
 	strLocation        = []byte("Location")
 	base32At128Path, _ = regexp.Compile("/\\.([a-zA-Z2-7]{26})")
-	schemeParms, _     = regexp.Compile("(?:([a-z]*)([0-9]*)[.+](?:([0-9a-fA-F]{3,8})[.+]([0-9a-fA-F]{3,8})[.+])?)?(.*)")
+	schemeParms, _     = regexp.Compile("(?:([a-z]*)([0-9]*)[.+](?:([0-9a-fA-F]{3,8})[.+](?:([0-9a-fA-F]{3,8})[.+])?)?)?(.*)")
 	pool               *pp.Pool
 )
 
@@ -111,15 +111,28 @@ func parseHexColor(s string) (c color.RGBA, err error) {
 	return
 }
 
-func extractFromScheme(scheme string) (realScheme string, format string, size int, fg, bg color.RGBA) {
+func extractFromScheme(scheme string) (realScheme string, format string, size int, fg, bg color.RGBA, err error) {
 	fg = color.RGBA{A: 255}
 	bg = color.RGBA{R: 255, G: 255, B: 255, A: 255}
 	parts := schemeParms.FindStringSubmatch(scheme)
 	format = parts[1]
-	size, _ = strconv.Atoi(parts[2])
-	if len(parts[3]) > 0 {
-		fg, _ = parseHexColor(parts[3])
-		bg, _ = parseHexColor(parts[4])
+	if parts[2] != "" {
+		size, err = strconv.Atoi(parts[2])
+		if err != nil {
+			return
+		}
+	}
+	if parts[3] != "" {
+		fg, err = parseHexColor(parts[3])
+		if err != nil {
+			return
+		}
+		if parts[4] != "" {
+			bg, err = parseHexColor(parts[4])
+			if err != nil {
+				return
+			}
+		}
 	}
 	realScheme = parts[5]
 	return
@@ -145,9 +158,12 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 		err = errors.New("missing host")
 	}
 
-	u.Scheme, format, size, fg, bg = extractFromScheme(u.Scheme)
-	target = u.String()
+	u.Scheme, format, size, fg, bg, err = extractFromScheme(u.Scheme)
+	if err != nil {
+		return
+	}
 
+	target = u.String()
 	if l := len(target); l > 1024 {
 		err = errors.New(f.Sprintf("too long (%d characters)", l))
 		return
