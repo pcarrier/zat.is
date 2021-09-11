@@ -96,6 +96,7 @@ func parseHexColor(s string) (c color.RGBA, err error) {
 func extractFromScheme(scheme string) (realScheme string, format string, size int, fg, bg color.RGBA) {
 	fg = color.RGBA{A: 255}
 	bg = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	log.Println("extractFromScheme1", fg, bg)
 	parts := schemeParms.FindStringSubmatch(scheme)
 	switch len(parts) {
 	case 6:
@@ -111,6 +112,7 @@ func extractFromScheme(scheme string) (realScheme string, format string, size in
 	case 2:
 		realScheme = parts[1]
 	}
+	log.Println("extractFromScheme2", fg, bg)
 	return
 }
 
@@ -135,6 +137,7 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 	}
 
 	u.Scheme, format, size, fg, bg = extractFromScheme(u.Scheme)
+	log.Println("extractFromPath", target, fg, bg)
 	target = u.String()
 
 	if l := len(target); l > 1024 {
@@ -169,7 +172,7 @@ func serveLink(ctx *h.RequestCtx) {
 func serveQR(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
 	target, format, size, fg, bg, err := extractFromPath(ctx)
-	log.Println(target, fg, bg) // fg and bg are uninitialized here!?
+	log.Println("serveQR", target, fg, bg) // fg and bg are uninitialized here!?
 	if err != nil {
 		ctx.Error(f.Sprintf("Invalid target: %s", err), h.StatusBadRequest)
 		return
