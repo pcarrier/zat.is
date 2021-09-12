@@ -59,23 +59,6 @@ func serveZat(ctx *h.RequestCtx) {
 			return
 		}
 
-		parsed, err := url.Parse(target)
-		if parsed.Scheme == "embed" {
-			parsed.Scheme = ""
-			parts := mimeAndContent.FindStringSubmatch(parsed.String())
-			if len(parts) < 3 {
-				return
-			}
-			ctx.SetContentType(parts[1])
-			content, err := url.PathUnescape(parts[2])
-			if err != nil {
-				ctx.Error(f.Sprintf("failure: %s", err), h.StatusInternalServerError)
-				return
-			}
-			ctx.SetBody([]byte(content))
-			return
-		}
-
 		ctx.Response.SetStatusCode(h.StatusMovedPermanently)
 		ctx.Response.Header.SetCanonical(strLocation, []byte(target))
 	}
@@ -164,11 +147,9 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 
 	s = string(ctx.Request.Header.RequestURI()[1:])
 
-	if !strings.HasPrefix(s, "embed:") {
-		s, err = url.PathUnescape(s)
-		if err != nil {
-			return
-		}
+	s, err = url.PathUnescape(s)
+	if err != nil {
+		return
 	}
 
 	var u *url.URL
@@ -176,12 +157,12 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 	if err != nil {
 		return
 	}
-	if u.Host == "" {
-		err = errors.New("missing host")
-		return
-	}
 	if u.Scheme == "" {
 		err = errors.New("missing scheme")
+		return
+	}
+	if u.Host == "" {
+		err = errors.New("missing host")
 		return
 	}
 
