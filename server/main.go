@@ -6,6 +6,7 @@ import (
 	"errors"
 	f "fmt"
 	"github.com/google/uuid"
+	du "github.com/vincent-petithory/dataurl"
 	p "github.com/jackc/pgx/v4"
 	pp "github.com/jackc/pgx/v4/pgxpool"
 	qr "github.com/skip2/go-qrcode"
@@ -56,6 +57,23 @@ func serveZat(ctx *h.RequestCtx) {
 		}
 		if target == "" {
 			ctx.Error("no link found", h.StatusNotFound)
+			return
+		}
+
+		parsed, err := url.Parse(target)
+		if err != nil {
+			ctx.Error(f.Sprint("unparseable link: %s", err), h.StatusExpectationFailed)
+			return
+		}
+
+		if parsed.Scheme == "data" {
+			decoded, err := du.DecodeString(target)
+			if err != nil {
+				ctx.Error(f.Sprint("invalid data URI: %s", err), h.StatusExpectationFailed)
+				return
+			}
+			ctx.SetContentType(decoded.ContentType())
+			ctx.SetBody(decoded.Data)
 			return
 		}
 
@@ -147,11 +165,6 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 
 	s = string(ctx.Request.Header.RequestURI()[1:])
 
-	s, err = url.PathUnescape(s)
-	if err != nil {
-		return
-	}
-
 	var u *url.URL
 	u, err = url.Parse(s)
 	if err != nil {
@@ -159,10 +172,6 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 	}
 	if u.Scheme == "" {
 		err = errors.New("missing scheme")
-		return
-	}
-	if u.Host == "" {
-		err = errors.New("missing host")
 		return
 	}
 

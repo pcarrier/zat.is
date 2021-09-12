@@ -7,4 +7,5 @@ require (
 	github.com/jackc/pgx/v4 v4.13.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/valyala/fasthttp v1.30.0
+	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
 )
