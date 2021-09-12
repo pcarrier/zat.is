@@ -24,7 +24,8 @@ import (
 var (
 	strLocation        = []byte("Location")
 	base32At128Path, _ = regexp.Compile("/\\.([a-zA-Z2-7]{26})")
-	schemeParms, _     = regexp.Compile("(?:([a-z]*)([0-9]*)[.+](?:([0-9a-fA-F]{3,8})[.+](?:([0-9a-fA-F]{3,8})[.+])?)?)?(.*)")
+	schemeParms, _     = regexp.Compile("(?:(gif|png|txt)([0-9]*)[.+](?:([0-9a-fA-F]{3,8})[.+](?:([0-9a-fA-F]{3,8})[.+])?)?)?(.*)")
+	mimeAndContent, _  = regexp.Compile("([^:]*):(.*)")
 	pool               *pp.Pool
 )
 
@@ -37,7 +38,7 @@ func serve(ctx *h.RequestCtx) {
 	case "qr.zat.is":
 		serveQR(ctx)
 	default:
-		ctx.Error(f.Sprintf("Unknown host %s", ctx.Host()), h.StatusNotFound)
+		ctx.Error(f.Sprintf("unknown host %s", ctx.Host()), h.StatusNotFound)
 	}
 }
 
@@ -45,18 +46,38 @@ func serveZat(ctx *h.RequestCtx) {
 	path := string(ctx.Path())
 	match := base32At128Path.FindStringSubmatch(path)
 	if match == nil {
-		ctx.Error("Invalid path", h.StatusNotFound)
+		ctx.Error("invalid path", h.StatusNotFound)
 	} else {
 		id := strings.ToUpper(match[1])
 		target, err := lookUp(id, ctx)
 		if err != nil {
-			ctx.Error(f.Sprintf("Failure: %s", err), h.StatusInternalServerError)
-		} else if target == "" {
-			ctx.Error("No link found", h.StatusNotFound)
-		} else {
-			ctx.Response.SetStatusCode(h.StatusMovedPermanently)
-			ctx.Response.Header.SetCanonical(strLocation, []byte(target))
+			ctx.Error(f.Sprintf("failure: %s", err), h.StatusInternalServerError)
+			return
 		}
+		if target == "" {
+			ctx.Error("no link found", h.StatusNotFound)
+			return
+		}
+
+		parsed, err := url.Parse(target)
+		if parsed.Scheme == "embed" {
+			parsed.Scheme = ""
+			parts := mimeAndContent.FindStringSubmatch(parsed.String())
+			if len(parts) < 3 {
+				return
+			}
+			ctx.SetContentType(parts[1])
+			content, err := url.PathUnescape(parts[2])
+			if err != nil {
+				ctx.Error(f.Sprintf("failure: %s", err), h.StatusInternalServerError)
+				return
+			}
+			ctx.SetBody([]byte(content))
+			return
+		}
+
+		ctx.Response.SetStatusCode(h.StatusMovedPermanently)
+		ctx.Response.Header.SetCanonical(strLocation, []byte(target))
 	}
 }
 
@@ -83,7 +104,7 @@ func insertUrlWhenAbsent(path string, url string, ctx context.Context) (err erro
 	return
 }
 
-func b32encode(path string) string {
+func shorten(path string) string {
 	u := uuid.NewSHA1(uuid.NameSpaceURL, []byte(path))
 	return b32.StdEncoding.WithPadding(b32.NoPadding).EncodeToString(u[:])
 }
@@ -141,9 +162,13 @@ func extractFromScheme(scheme string) (realScheme string, format string, size in
 func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int, fg, bg color.RGBA, err error) {
 	var s string
 
-	s, err = url.PathUnescape(string(ctx.Request.Header.RequestURI()[1:]))
-	if err != nil {
-		return
+	s = string(ctx.Request.Header.RequestURI()[1:])
+
+	if !strings.HasPrefix(s, "embed:") {
+		s, err = url.PathUnescape(s)
+		if err != nil {
+			return
+		}
 	}
 
 	var u *url.URL
@@ -151,11 +176,13 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 	if err != nil {
 		return
 	}
-	if u.Scheme == "" {
-		err = errors.New("missing scheme")
-	}
 	if u.Host == "" {
 		err = errors.New("missing host")
+		return
+	}
+	if u.Scheme == "" {
+		err = errors.New("missing scheme")
+		return
 	}
 
 	u.Scheme, format, size, fg, bg, err = extractFromScheme(u.Scheme)
@@ -164,7 +191,7 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 	}
 
 	target = u.String()
-	if l := len(target); l > 1024 {
+	if l := len(target); l > 10*1024 {
 		err = errors.New(f.Sprintf("too long (%d characters)", l))
 		return
 	}
@@ -176,11 +203,11 @@ func serveLink(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
 	target, _, _, _, _, err := extractFromPath(ctx)
 	if err != nil {
-		ctx.Error(f.Sprintf("Invalid target: %s", err), h.StatusBadRequest)
+		ctx.Error(f.Sprintf("invalid target: %s", err), h.StatusBadRequest)
 		return
 	}
 
-	path := b32encode(target)
+	path := shorten(target)
 	err = insertUrlWhenAbsent(path, target, ctx)
 	if err != nil {
 		ctx.Error(err.Error(), h.StatusInternalServerError)
@@ -197,7 +224,7 @@ func serveQR(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
 	target, format, size, fg, bg, err := extractFromPath(ctx)
 	if err != nil {
-		ctx.Error(f.Sprintf("Invalid target: %s", err), h.StatusBadRequest)
+		ctx.Error(f.Sprintf("invalid target: %s", err), h.StatusBadRequest)
 		return
 	}
 
@@ -210,11 +237,11 @@ func serveQR(ctx *h.RequestCtx) {
 	}
 
 	if size > 100 {
-		ctx.Error(f.Sprintf("Excessive size per block: %d", size), h.StatusBadRequest)
+		ctx.Error(f.Sprintf("too many pixels per block (%d)", size), h.StatusBadRequest)
 		return
 	}
 
-	path := b32encode(target)
+	path := shorten(target)
 	err = insertUrlWhenAbsent(path, target, ctx)
 	if err != nil {
 		ctx.Error(err.Error(), h.StatusInternalServerError)

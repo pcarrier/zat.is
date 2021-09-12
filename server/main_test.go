@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-func Test_b32encode(t *testing.T) {
+func Test_shorten(t *testing.T) {
 	type args struct {
 		path string
 	}
@@ -16,8 +16,8 @@ func Test_b32encode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := b32encode(tt.args.path); got != tt.want {
-				t.Errorf("b32encode() = %v, want %v", got, tt.want)
+			if got := shorten(tt.args.path); got != tt.want {
+				t.Errorf("shorten() = %v, want %v", got, tt.want)
 			}
 		})
 	}
