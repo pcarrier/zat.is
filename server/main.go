@@ -6,11 +6,11 @@ import (
 	"errors"
 	f "fmt"
 	"github.com/google/uuid"
-	du "github.com/vincent-petithory/dataurl"
 	p "github.com/jackc/pgx/v4"
 	pp "github.com/jackc/pgx/v4/pgxpool"
 	qr "github.com/skip2/go-qrcode"
 	h "github.com/valyala/fasthttp"
+	du "github.com/vincent-petithory/dataurl"
 	"image/color"
 	"image/gif"
 	"image/png"
@@ -25,21 +25,18 @@ import (
 var (
 	strLocation        = []byte("Location")
 	base32At128Path, _ = regexp.Compile("/\\.([a-zA-Z2-7]{26})")
-	schemeParms, _     = regexp.Compile("(?:(gif|png|txt)([0-9]*)[.+](?:([0-9a-fA-F]{3,8})[.+](?:([0-9a-fA-F]{3,8})[.+])?)?)?(.*)")
-	mimeAndContent, _  = regexp.Compile("([^:]*):(.*)")
+	parms, _           = regexp.Compile("(gif|png|txt)([0-9]*)(?:[.+]([0-9a-fA-F]{3,8})(?:[.+]([0-9a-fA-F]{3,8}))?)?")
 	pool               *pp.Pool
 )
 
 func serve(ctx *h.RequestCtx) {
-	switch string(ctx.Host()) {
-	case "zat.is":
-		serveZat(ctx)
-	case "l.zat.is":
+	host := string(ctx.Host())
+	if strings.HasPrefix(host, "l.") {
 		serveLink(ctx)
-	case "qr.zat.is":
+	} else if strings.HasPrefix(host, "qr.") {
 		serveQR(ctx)
-	default:
-		ctx.Error(f.Sprintf("unknown host %s", ctx.Host()), h.StatusNotFound)
+	} else {
+		serveZat(ctx)
 	}
 }
 
@@ -62,14 +59,14 @@ func serveZat(ctx *h.RequestCtx) {
 
 		parsed, err := url.Parse(target)
 		if err != nil {
-			ctx.Error(f.Sprint("unparseable link: %s", err), h.StatusExpectationFailed)
+			ctx.Error(f.Sprintf("unparseable link: %s", err), h.StatusExpectationFailed)
 			return
 		}
 
 		if parsed.Scheme == "data" {
 			decoded, err := du.DecodeString(target)
 			if err != nil {
-				ctx.Error(f.Sprint("invalid data URI: %s", err), h.StatusExpectationFailed)
+				ctx.Error(f.Sprintf("invalid data URI: %s", err), h.StatusExpectationFailed)
 				return
 			}
 			ctx.SetContentType(decoded.ContentType())
@@ -133,10 +130,15 @@ func parseHexColor(s string) (c color.RGBA, err error) {
 	return
 }
 
-func extractFromScheme(scheme string) (realScheme string, format string, size int, fg, bg color.RGBA, err error) {
+func extractParms(s string) (format string, size int, fg, bg color.RGBA, err error) {
 	fg = color.RGBA{A: 255}
 	bg = color.RGBA{R: 255, G: 255, B: 255, A: 255}
-	parts := schemeParms.FindStringSubmatch(scheme)
+	parts := parms.FindStringSubmatch(s)
+	if len(parts) == 0 {
+		err = errors.New("could not find a format")
+		return
+	}
+
 	format = parts[1]
 	if parts[2] != "" {
 		size, err = strconv.Atoi(parts[2])
@@ -156,17 +158,27 @@ func extractFromScheme(scheme string) (realScheme string, format string, size in
 			}
 		}
 	}
-	realScheme = parts[5]
 	return
 }
 
 func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int, fg, bg color.RGBA, err error) {
-	var s string
+	path := ctx.Request.Header.RequestURI()
+	total := string(path[1:])
+	parts := strings.SplitN(total, "~", 2)
 
-	s = string(ctx.Request.Header.RequestURI()[1:])
+	if len(parts) != 2 {
+		err = errors.New(f.Sprintf("expected /format~URL, got %s", string(path)))
+		return
+	}
 
+	format, size, fg, bg, err = extractParms(parts[0])
+	if err != nil {
+		return
+	}
+
+	target = parts[1]
 	var u *url.URL
-	u, err = url.Parse(s)
+	u, err = url.Parse(target)
 	if err != nil {
 		return
 	}
@@ -174,15 +186,8 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 		err = errors.New("missing scheme")
 		return
 	}
-
-	u.Scheme, format, size, fg, bg, err = extractFromScheme(u.Scheme)
-	if err != nil {
-		return
-	}
-
-	target = u.String()
 	if l := len(target); l > 10*1024 {
-		err = errors.New(f.Sprintf("too long (%d characters)", l))
+		err = errors.New(f.Sprintf("URL too long (%d characters)", l))
 		return
 	}
 
@@ -191,14 +196,9 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 
 func serveLink(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
-	target, _, _, _, _, err := extractFromPath(ctx)
-	if err != nil {
-		ctx.Error(f.Sprintf("invalid target: %s", err), h.StatusBadRequest)
-		return
-	}
-
+	target := string(ctx.Request.Header.RequestURI()[1:])
 	path := shorten(target)
-	err = insertUrlWhenAbsent(path, target, ctx)
+	err := insertUrlWhenAbsent(path, target, ctx)
 	if err != nil {
 		ctx.Error(err.Error(), h.StatusInternalServerError)
 		return
