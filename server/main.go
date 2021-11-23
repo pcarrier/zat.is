@@ -176,7 +176,10 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 		return
 	}
 
-	target = parts[1]
+	target, err = url.PathUnescape(parts[1])
+	if err != nil {
+		return
+	}
 	var u *url.URL
 	u, err = url.Parse(target)
 	if err != nil {
@@ -196,9 +199,12 @@ func extractFromPath(ctx *h.RequestCtx) (target string, format string, size int,
 
 func serveLink(ctx *h.RequestCtx) {
 	ctx.Response.Header.Set("Cache-Control", "max-age=31536000")
-	target := string(ctx.Request.Header.RequestURI()[1:])
+	target, err := url.PathUnescape(string(ctx.Request.Header.RequestURI()[1:]))
+	if err != nil {
+		ctx.Error(err.Error(), h.StatusInternalServerError)
+	}
 	path := shorten(target)
-	err := insertUrlWhenAbsent(path, target, ctx)
+	err = insertUrlWhenAbsent(path, target, ctx)
 	if err != nil {
 		ctx.Error(err.Error(), h.StatusInternalServerError)
 		return
