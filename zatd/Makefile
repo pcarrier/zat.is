@@ -1,4 +1,4 @@
-zatd: main.go
+zatd: *.go
 	GOOS=linux GOARCH=amd64 go build -o zatd .
 .PHONY: deploy
 deploy: zatd
