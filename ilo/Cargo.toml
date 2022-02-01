@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+v8 = "0.38.1"
 uuid = { version = "0.8.2", features = ["serde", "v5"] }
-sled = "0.34.7"
+sled = { version = "0.34.7", features = ["compression", "pretty_backtrace"] }
+zerocopy = "0.6.1"
