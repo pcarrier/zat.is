@@ -42,7 +42,7 @@ func serveQR(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	u := fmt.Sprintf("HTTPS://ZAT.IS/.%s", shortened)
+	u := strings.ToUpper("https://zat.is/." + shortened)
 	ctx.Response.Header.Set("Link", u)
 	ctx.Response.Header.Set("To", target)
 

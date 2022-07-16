@@ -1,15 +1,16 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/valyala/fasthttp"
 	"net/url"
 )
 
 func shorten(path string) string {
-	u := uuid.NewSHA1(uuid.NameSpaceURL, []byte(path))
-	return b32encoder.EncodeToString(u[:])
+	h := sha256.New()
+	h.Write([]byte(path))
+	return b32encoder.EncodeToString(h.Sum(nil)[:16])
 }
 
 func serveLink(ctx *fasthttp.RequestCtx) {

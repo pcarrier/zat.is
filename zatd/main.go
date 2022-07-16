@@ -15,7 +15,7 @@ import (
 var (
 	b32encoder         = base32.NewEncoding("abcdefghijklmnopqrstuvwxyz234567").WithPadding(base64.NoPadding)
 	strLocation        = []byte("Location")
-	base32At128Path, _ = regexp.Compile("/\\.([a-z2-7]{26})")
+	base32At128Path, _ = regexp.Compile("/\\.([a-zA-Z2-7]{26})")
 	parms, _           = regexp.Compile("(gif|png|txt)([0-9]*)(?:[.+]([0-9a-fA-F]{3,8})(?:[.+]([0-9a-fA-F]{3,8}))?)?")
 	pool               *pp.Pool
 )

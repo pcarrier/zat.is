@@ -14,7 +14,7 @@ func serveRoot(ctx *fasthttp.RequestCtx) {
 	if match == nil {
 		ctx.Error("invalid path", fasthttp.StatusNotFound)
 	} else {
-		id := strings.ToUpper(match[1])
+		id := strings.ToLower(match[1])
 		target, err := lookUp(id, ctx)
 		if err != nil {
 			ctx.Error(fmt.Sprintf("failure: %s", err), fasthttp.StatusInternalServerError)
