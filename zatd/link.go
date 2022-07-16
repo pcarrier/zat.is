@@ -1,7 +1,6 @@
 package main
 
 import (
-	b32 "encoding/base32"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/valyala/fasthttp"
@@ -10,7 +9,7 @@ import (
 
 func shorten(path string) string {
 	u := uuid.NewSHA1(uuid.NameSpaceURL, []byte(path))
-	return b32.StdEncoding.WithPadding(b32.NoPadding).EncodeToString(u[:])
+	return b32encoder.EncodeToString(u[:])
 }
 
 func serveLink(ctx *fasthttp.RequestCtx) {
