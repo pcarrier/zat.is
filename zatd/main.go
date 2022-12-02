@@ -22,7 +22,6 @@ var (
 
 func serve(ctx *h.RequestCtx) {
 	host := string(ctx.Host())
-	log.Println(host)
 	if strings.HasPrefix(host, "l.") {
 		serveLink(ctx)
 	} else if strings.HasPrefix(host, "qr.") {
